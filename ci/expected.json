@@ -1,0 +1,10 @@
+{
+  "control": "alive",
+  "control-iconoverride": "alive",
+  "flyouticon-throws": "crash-in-UpdateLeftBarButtonItem",
+  "iconoverride-throws": "crash-in-UpdateLeftBarButtonItem",
+  "flyouticon-canceled-by-maui": "crash-in-UpdateLeftBarButtonItem",
+  "flyouticon-throws-safe": "alive",
+  "iconoverride-throws-safe": "alive",
+  "flyouticon-canceled-by-maui-safe": "alive"
+}
