@@ -1,6 +1,8 @@
 {
   "control": "alive",
   "control-iconoverride": "alive",
+  "control-image-throws": "alive",
+  "flyouticon-slow": "alive",
   "flyouticon-throws": "crash-in-UpdateLeftBarButtonItem",
   "iconoverride-throws": "crash-in-UpdateLeftBarButtonItem",
   "flyouticon-canceled-by-maui": "crash-in-UpdateLeftBarButtonItem",

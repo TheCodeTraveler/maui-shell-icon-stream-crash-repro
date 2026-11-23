@@ -27,7 +27,7 @@ wait_for_end() {
     return 1
 }
 
-for case_name in control control-iconoverride \
+for case_name in control control-iconoverride control-image-throws flyouticon-slow \
     flyouticon-throws iconoverride-throws flyouticon-canceled-by-maui \
     flyouticon-throws-safe iconoverride-throws-safe flyouticon-canceled-by-maui-safe; do
     folder="$artifacts/$case_name"
@@ -38,6 +38,7 @@ for case_name in control control-iconoverride \
     adb shell am start -W -n "$package/com.example.shellicon.MainActivity" --es case "$case_name" > "$folder/am-start.txt" 2>&1
 
     wait_for_end > "$folder/wait.txt" 2>&1
+    if [ -z "$(adb shell pidof "$package" | tr -d '\r')" ]; then echo gone > "$folder/process.txt"; else echo alive > "$folder/process.txt"; fi
     echo "$case_name: $(cat "$folder/wait.txt")"
 
     adb logcat -d > "$folder/logcat.txt"

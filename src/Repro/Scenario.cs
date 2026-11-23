@@ -2,10 +2,14 @@ namespace Repro;
 
 enum IconSourceKind { Valid, Throws, SlowThenValid }
 
-enum IconPlacement { FlyoutIcon, BackButtonIconOverride }
+enum IconPlacement { FlyoutIcon, BackButtonIconOverride, ImageAndToolbarItem }
 
-sealed record Scenario(string Name, IconSourceKind Kind, IconPlacement Placement, bool UsesWorkaround)
+sealed record Scenario(string Name, IconSourceKind Kind, IconPlacement Placement, bool UsesWorkaround, bool ChangesForegroundColor)
 {
+    readonly TaskCompletionSource firstStreamRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public Task FirstStreamRequested => firstStreamRequested.Task;
+
     public static string CaseName { get; set; } = "control";
 
     // 1x1 transparent PNG
@@ -24,10 +28,12 @@ sealed record Scenario(string Name, IconSourceKind Kind, IconPlacement Placement
             "flyouticon-throws" => (IconSourceKind.Throws, IconPlacement.FlyoutIcon),
             "iconoverride-throws" => (IconSourceKind.Throws, IconPlacement.BackButtonIconOverride),
             "flyouticon-canceled-by-maui" => (IconSourceKind.SlowThenValid, IconPlacement.FlyoutIcon),
+            "flyouticon-slow" => (IconSourceKind.SlowThenValid, IconPlacement.FlyoutIcon),
+            "control-image-throws" => (IconSourceKind.Throws, IconPlacement.ImageAndToolbarItem),
             _ => throw new ArgumentException($"Unknown case '{caseName}'")
         };
 
-        return new Scenario(caseName, kind, placement, usesWorkaround);
+        return new Scenario(caseName, kind, placement, usesWorkaround, baseName == "flyouticon-canceled-by-maui");
     }
 
     public ImageSource CreateIconSource()
@@ -38,6 +44,7 @@ sealed record Scenario(string Name, IconSourceKind Kind, IconPlacement Placement
         {
             var requestNumber = Interlocked.Increment(ref requestCount);
             Log.Line("STREAM_REQUESTED", Name, ("n", requestNumber.ToString()));
+            firstStreamRequested.TrySetResult();
 
             switch (Kind)
             {

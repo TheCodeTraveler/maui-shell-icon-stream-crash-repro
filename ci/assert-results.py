@@ -25,7 +25,8 @@ EXCEPTION_SIGNATURE = {
     "iconoverride-throws": r"simulated offline",
     "flyouticon-canceled-by-maui": r"TaskCanceledException|OperationCanceledException",
 }
-MINIMUM_REQUESTS = {"flyouticon-canceled-by-maui": 2, "flyouticon-canceled-by-maui-safe": 2}
+MINIMUM_REQUESTS = {"flyouticon-canceled-by-maui": 2, "flyouticon-canceled-by-maui-safe": 2, "control-image-throws": 2}
+CANCELED_CASES = {"flyouticon-canceled-by-maui", "flyouticon-canceled-by-maui-safe"}
 
 
 def read(path):
@@ -57,7 +58,8 @@ def observe(case, folder):
     unhandled = any(m.startswith(f"UNHANDLED case={case}") for m in marker_lines)
     fatal = "FATAL EXCEPTION" in own_text
     fallbacks = sum(1 for m in marker_lines if m.startswith(f"FALLBACK case={case}"))
-    details = {"pid": pid, "streamRequests": requests, "alive": alive, "done": done, "unhandledLogged": unhandled, "fatalException": fatal, "fallbacks": fallbacks}
+    process = read(f"{folder}/process.txt").strip() or "unknown"
+    details = {"process": process, "pid": pid, "streamRequests": requests, "alive": alive, "done": done, "unhandledLogged": unhandled, "fatalException": fatal, "fallbacks": fallbacks}
 
     problems = []
     wanted_requests = MINIMUM_REQUESTS.get(case, 1)
@@ -65,15 +67,24 @@ def observe(case, folder):
         problems.append(f"only {requests} STREAM_REQUESTED lines, expected at least {wanted_requests}: the icon load did not happen as planned")
         return "icon-not-loaded", problems, details
 
-    if alive and done and not fatal and not unhandled:
+    if case in CANCELED_CASES:
+        second_update = next((i for i, m in enumerate(marker_lines) if m.startswith(f"SECOND_UPDATE case={case}")), None)
+        second_request_after = second_update is not None and any(
+            m.startswith(f"STREAM_REQUESTED case={case} n=2") for m in marker_lines[second_update:])
+        first_served = any(m.startswith(f"STREAM_SERVED case={case} n=1") for m in marker_lines)
+        if not second_request_after or first_served:
+            problems.append("the first load was not canceled by a second load that started after SECOND_UPDATE (needs STREAM_REQUESTED n=2 after the marker and no STREAM_SERVED n=1)")
+            return "cancel-not-isolated", problems, details
+
+    if alive and done and not fatal and not unhandled and process == "alive":
         return "alive", problems, details
 
     base_case = case.removesuffix("-safe")
     signature = EXCEPTION_SIGNATURE.get(base_case)
-    if not alive and not done and signature and re.search(signature, own_text) and "UpdateLeftBarButtonItem" in own_text:
+    if process == "gone" and not alive and not done and signature and re.search(signature, own_text) and "UpdateLeftBarButtonItem" in own_text:
         return "crash-in-UpdateLeftBarButtonItem", problems, details
 
-    problems.append("process ended or logged errors, but without the expected exception text plus an UpdateLeftBarButtonItem frame")
+    problems.append(f"process={process}; crash verdicts need a dead process plus the expected exception text and an UpdateLeftBarButtonItem frame")
     return "other-failure", problems, details
 
 
@@ -89,12 +100,12 @@ os.makedirs(arguments.results, exist_ok=True)
 json.dump({"apiLevel": arguments.api_level, "cases": rows}, open(f"{arguments.results}/results.json", "w"), indent=2)
 
 wrong = [row["case"] for row in rows if not row["match"]]
-verdict = ("Bug reproduced: the three failing icon loads crashed the app inside UpdateLeftBarButtonItem; controls and workaround stayed alive"
+verdict = ("Bug reproduced: the three failing icon loads killed the app inside UpdateLeftBarButtonItem; controls and workaround stayed alive"
            if not wrong else f"NOT as expected: {', '.join(wrong)}")
 lines = [f"### Android API {arguments.api_level}", "", f"**{verdict}**", "",
-         "| Case | Expected | Observed | Match | Stream requests | Notes |", "|---|---|---|---|---|---|"]
+         "| Case | Expected | Observed | Match | Process | Stream requests | Notes |", "|---|---|---|---|---|---|---|"]
 for row in rows:
-    lines.append(f"| {row['case']} | {row['expected']} | {row['observed']} | {'yes' if row['match'] else 'NO'} | {row.get('streamRequests', '-')} | {'; '.join(row['problems']).replace('|', '/')} |")
+    lines.append(f"| {row['case']} | {row['expected']} | {row['observed']} | {'yes' if row['match'] else 'NO'} | {row.get('process', '-')} | {row.get('streamRequests', '-')} | {'; '.join(row['problems']).replace('|', '/')} |")
 table = "\n".join(lines) + "\n"
 print(table)
 if arguments.summary:

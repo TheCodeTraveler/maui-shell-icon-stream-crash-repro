@@ -11,11 +11,12 @@ adb shell am start -n com.example.shellicon/com.example.shellicon.MainActivity -
 adb logcat -d | grep -E "ShellIconRepro|UpdateLeftBarButtonItem"
 ```
 
-Cases: `control`, `control-iconoverride`, `flyouticon-throws`, `iconoverride-throws`, `flyouticon-canceled-by-maui`, and each failing case with `-safe` appended.
+Cases: `control`, `control-iconoverride`, `control-image-throws`, `flyouticon-slow`, `flyouticon-throws`, `iconoverride-throws`, `flyouticon-canceled-by-maui`, and each failing case with `-safe` appended.
 
 ## Observed vs expected
 
 - Observed: the process dies with a fatal exception thrown from `ShellToolbarTracker.UpdateLeftBarButtonItem` (`IOException: simulated offline`, or `TaskCanceledException`).
+- Not a misuse of the API: `control-image-throws` shows `Image` and `ToolbarItem` survive the same throwing source (`ImageSourcePartLoader` and `LoadImage` use `FireAndForget`).
 - Expected: the icon is skipped (as the bottom-tab twin does since dotnet/maui#36328) and the app keeps running.
 
 ## Versions
@@ -30,12 +31,14 @@ Cases: `control`, `control-iconoverride`, `flyouticon-throws`, `iconoverride-thr
 |---|---|---|
 | `control` | `FlyoutIcon` is a stream that loads fine | app stays alive |
 | `control-iconoverride` | same, via `BackButtonBehavior.IconOverride` on a pushed page | app stays alive |
+| `control-image-throws` | the same throwing stream on an `Image.Source` and a `ToolbarItem.IconImageSource` of the home page; no `FlyoutIcon`, no `IconOverride` | app stays alive, at least 2 `STREAM_REQUESTED`, no `UNHANDLED` (MAUI's other image paths survive a throwing source; only `ShellToolbarTracker` does not) |
+| `flyouticon-slow` | slow stream as `FlyoutIcon`, no color change | app stays alive (isolates the trigger: if this crashes, startup alone cancels the load) |
 | `flyouticon-throws` | stream func throws `IOException("simulated offline")` | **crash** in `UpdateLeftBarButtonItem` |
 | `iconoverride-throws` | same, via `IconOverride` | **crash** |
-| `flyouticon-canceled-by-maui` | slow stream; app sets `Shell.ForegroundColor` after 500 ms, so MAUI loads the icon a second time and cancels the first via the shared per-source token. App code never cancels. | **crash** with `TaskCanceledException` |
+| `flyouticon-canceled-by-maui` | slow stream; once the first load has started (`STREAM_REQUESTED n=1`) the app logs `SECOND_UPDATE` and sets `Shell.ForegroundColor`, so MAUI loads the icon a second time and cancels the first via the shared per-source token. App code never cancels. | **crash** with `TaskCanceledException`; the assert needs `STREAM_REQUESTED n=2` after `SECOND_UPDATE` and no `STREAM_SERVED n=1` |
 | `*-safe` | same three, but the source is a custom `IStreamImageSource` (`SafeStreamImageSource.cs`) that catches and returns a 1x1 PNG, and uses no shared token | app stays alive |
 
-CI is green only when every crash case crashes with the expected exception text plus an `UpdateLeftBarButtonItem` frame, and every control and `-safe` case logs `ALIVE` and `DONE`. Each case must also log `START` and the expected number of `STREAM_REQUESTED` lines, so a case that did not run fails. The step summary lists expected vs observed per case; logs and `results.json` are uploaded as artifacts.
+CI is green only when every crash case kills the process (`process.txt` says `gone`) with the expected exception text plus an `UpdateLeftBarButtonItem` frame, and every control and `-safe` case logs `ALIVE` and `DONE` with the process still alive. Each case must also log `START` and the expected number of `STREAM_REQUESTED` lines, so a case that did not run fails. The step summary lists expected vs observed per case; logs and `results.json` are uploaded as artifacts.
 
 Fix leg: a subclass of `ShellToolbarTracker` cannot catch the exception, because it is raised after `async void` returns to the caller. The workaround therefore lives in the image source.
 

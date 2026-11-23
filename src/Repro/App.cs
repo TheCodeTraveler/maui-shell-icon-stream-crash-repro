@@ -10,12 +10,23 @@ public sealed class App : Application
 
         Routing.RegisterRoute("detail", typeof(DetailPage));
         var shell = new Shell { FlyoutBehavior = FlyoutBehavior.Flyout };
-        shell.Items.Add(new ShellContent { Title = "Home", Route = "home", Content = new ContentPage { Title = "Home", Content = new Label { Text = scenario.Name } } });
+        var homePage = new ContentPage { Title = "Home", Content = new Label { Text = scenario.Name } };
+        shell.Items.Add(new ShellContent { Title = "Home", Route = "home", Content = homePage });
 
-        if (scenario.Placement == IconPlacement.FlyoutIcon)
-            shell.FlyoutIcon = scenario.CreateIconSource();
-        else
-            DetailPage.IconSource = scenario.CreateIconSource();
+        switch (scenario.Placement)
+        {
+            case IconPlacement.FlyoutIcon:
+                shell.FlyoutIcon = scenario.CreateIconSource();
+                break;
+            case IconPlacement.BackButtonIconOverride:
+                DetailPage.IconSource = scenario.CreateIconSource();
+                break;
+            case IconPlacement.ImageAndToolbarItem:
+                var sharedSource = scenario.CreateIconSource();
+                homePage.Content = new VerticalStackLayout { Children = { new Label { Text = scenario.Name }, new Image { Source = sharedSource, HeightRequest = 24, WidthRequest = 24 } } };
+                homePage.ToolbarItems.Add(new ToolbarItem { IconImageSource = sharedSource });
+                break;
+        }
 
         _ = DriveScenarioAsync(scenario, shell);
         return new Window(shell);
@@ -23,15 +34,16 @@ public sealed class App : Application
 
     static async Task DriveScenarioAsync(Scenario scenario, Shell shell)
     {
-        await Task.Delay(TimeSpan.FromMilliseconds(500));
-
-        if (scenario.Placement == IconPlacement.FlyoutIcon)
+        if (scenario.ChangesForegroundColor)
         {
-            // A second UpdateLeftBarButtonItem while the first icon load is pending: MAUI cancels its own first load
+            // Waits for the first icon load instead of a fixed delay, so the second update always lands while it is pending
+            await Task.WhenAny(scenario.FirstStreamRequested, Task.Delay(TimeSpan.FromSeconds(20)));
+            Log.Line("SECOND_UPDATE", scenario.Name);
             await MainThread.InvokeOnMainThreadAsync(() => Shell.SetForegroundColor(shell, Colors.Red));
         }
-        else
+        else if (scenario.Placement == IconPlacement.BackButtonIconOverride)
         {
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
             await MainThread.InvokeOnMainThreadAsync(() => shell.GoToAsync("detail"));
         }
 
