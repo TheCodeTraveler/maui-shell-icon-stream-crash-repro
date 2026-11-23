@@ -27,6 +27,7 @@ EXCEPTION_SIGNATURE = {
 }
 MINIMUM_REQUESTS = {"flyouticon-canceled-by-maui": 2, "flyouticon-canceled-by-maui-safe": 2, "control-image-throws": 2}
 CANCELED_CASES = {"flyouticon-canceled-by-maui", "flyouticon-canceled-by-maui-safe"}
+FALLBACK_REQUIRED_CASES = {"flyouticon-throws-safe", "iconoverride-throws-safe"}
 
 
 def read(path):
@@ -71,10 +72,19 @@ def observe(case, folder):
         second_update = next((i for i, m in enumerate(marker_lines) if m.startswith(f"SECOND_UPDATE case={case}")), None)
         second_request_after = second_update is not None and any(
             m.startswith(f"STREAM_REQUESTED case={case} n=2") for m in marker_lines[second_update:])
-        first_served = any(m.startswith(f"STREAM_SERVED case={case} n=1") for m in marker_lines)
-        if not second_request_after or first_served:
+        served = lambda n: any(m.startswith(f"STREAM_SERVED case={case} n={n}") for m in marker_lines)
+        if case.endswith("-safe"):
+            # SafeStreamImageSource receives no token from MAUI, so both loads finish and nothing falls back
+            if not second_request_after or not served(1) or not served(2) or fallbacks:
+                problems.append("the safe source must serve both loads: STREAM_REQUESTED n=2 after SECOND_UPDATE, STREAM_SERVED n=1 and n=2, and no FALLBACK")
+                return "cancel-not-isolated", problems, details
+        elif not second_request_after or served(1):
             problems.append("the first load was not canceled by a second load that started after SECOND_UPDATE (needs STREAM_REQUESTED n=2 after the marker and no STREAM_SERVED n=1)")
             return "cancel-not-isolated", problems, details
+
+    if case in FALLBACK_REQUIRED_CASES and not fallbacks:
+        problems.append("no FALLBACK line: the throwing stream was never caught by the safe source")
+        return "fallback-missing", problems, details
 
     if alive and done and not fatal and not unhandled and process == "alive":
         return "alive", problems, details

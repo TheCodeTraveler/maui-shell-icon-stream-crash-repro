@@ -5,9 +5,16 @@ On Android, a `Shell.FlyoutIcon` or `BackButtonBehavior.IconOverride` whose `Str
 ## Repro
 
 ```bash
+bash ci/build.sh && bash ci/run-cases.sh && python3 -I ci/assert-results.py --expected ci/expected.json --results artifacts
+```
+
+Needs a booted Android emulator. A single case by hand:
+
+```bash
 dotnet build src/Repro -c Release -p:RuntimeIdentifier=android-x64
 adb install -r src/Repro/bin/Release/net11.0-android/android-x64/com.example.shellicon-Signed.apk
-adb shell am start -n com.example.shellicon/com.example.shellicon.MainActivity --es case flyouticon-throws
+adb shell am start -W -n com.example.shellicon/com.example.shellicon.MainActivity --es case flyouticon-throws
+sleep 5
 adb logcat -d | grep -E "ShellIconRepro|UpdateLeftBarButtonItem"
 ```
 
@@ -36,7 +43,7 @@ Cases: `control`, `control-iconoverride`, `control-image-throws`, `flyouticon-sl
 | `flyouticon-throws` | stream func throws `IOException("simulated offline")` | **crash** in `UpdateLeftBarButtonItem` |
 | `iconoverride-throws` | same, via `IconOverride` | **crash** |
 | `flyouticon-canceled-by-maui` | slow stream; once the first load has started (`STREAM_REQUESTED n=1`) the app logs `SECOND_UPDATE` and sets `Shell.ForegroundColor`, so MAUI loads the icon a second time and cancels the first via the shared per-source token. App code never cancels. | **crash** with `TaskCanceledException`; the assert needs `STREAM_REQUESTED n=2` after `SECOND_UPDATE` and no `STREAM_SERVED n=1` |
-| `*-safe` | same three, but the source is a custom `IStreamImageSource` (`SafeStreamImageSource.cs`) that catches and returns a 1x1 PNG, and uses no shared token | app stays alive |
+| `*-safe` | same three, but the source is a custom `IStreamImageSource` (`SafeStreamImageSource.cs`) that catches and returns a 1x1 PNG, and uses no shared token | app stays alive; the throwing `-safe` cases need at least one `FALLBACK`; `flyouticon-canceled-by-maui-safe` needs `STREAM_REQUESTED n=2` after `SECOND_UPDATE`, `STREAM_SERVED` n=1 and n=2, and no `FALLBACK` |
 
 CI is green only when every crash case kills the process (`process.txt` says `gone`) with the expected exception text plus an `UpdateLeftBarButtonItem` frame, and every control and `-safe` case logs `ALIVE` and `DONE` with the process still alive. Each case must also log `START` and the expected number of `STREAM_REQUESTED` lines, so a case that did not run fails. The step summary lists expected vs observed per case; logs and `results.json` are uploaded as artifacts.
 
