@@ -49,7 +49,7 @@ CI is green only when every crash case kills the process (`process.txt` says `go
 
 Workaround leg: a subclass of `ShellToolbarTracker` cannot catch the exception, because it is raised after `async void` returns to the caller. The workaround therefore lives in the image source.
 
-CI: (run link added after the first run)
+CI: https://github.com/TheCodeTraveler/maui-shell-icon-stream-crash-repro/actions/runs/45937466908 (green = every cell matched its expected result)
 
 Known unrelated flake: on the first launch after emulator boot, Glide can re-read a closed stream (dotnet/maui#37834, fixed by dotnet/maui#38111 for the next service release). The app does not crash, a warm-up launch absorbs it, and the assert reports it as `glide-restart-37834`.
 
