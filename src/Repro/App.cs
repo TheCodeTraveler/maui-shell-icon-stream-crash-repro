@@ -5,7 +5,7 @@ public sealed class App : Application
     protected override Window CreateWindow(IActivationState? activationState)
     {
         var scenario = Scenario.Parse(Scenario.CaseName);
-        Log.Line("START", scenario.Name, ("maui", typeof(Shell).Assembly.GetName().Version?.ToString() ?? "?"), ("runtime", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription));
+        Log.Line("START", scenario.Name, ("maui", typeof(Shell).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "?"), ("runtime", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription));
         ObserveUnhandledExceptions(scenario);
 
         Routing.RegisterRoute("detail", typeof(DetailPage));
@@ -16,23 +16,24 @@ public sealed class App : Application
         switch (scenario.Placement)
         {
             case IconPlacement.FlyoutIcon:
-                shell.FlyoutIcon = scenario.CreateIconSource();
+                shell.FlyoutIcon = scenario.CreateIconSource("flyouticon");
                 break;
             case IconPlacement.BackButtonIconOverride:
-                DetailPage.IconSource = scenario.CreateIconSource();
+                DetailPage.IconSource = scenario.CreateIconSource("iconoverride");
                 break;
             case IconPlacement.ImageAndToolbarItem:
-                var sharedSource = scenario.CreateIconSource();
-                homePage.Content = new VerticalStackLayout { Children = { new Label { Text = scenario.Name }, new Image { Source = sharedSource, HeightRequest = 24, WidthRequest = 24 } } };
-                homePage.ToolbarItems.Add(new ToolbarItem { IconImageSource = sharedSource });
+                homePage.Content = new VerticalStackLayout { Children = { new Label { Text = scenario.Name }, new Image { Source = scenario.CreateIconSource("image"), HeightRequest = 24, WidthRequest = 24 } } };
+                homePage.ToolbarItems.Add(new ToolbarItem { IconImageSource = scenario.CreateIconSource("toolbaritem") });
                 break;
         }
 
-        _ = DriveScenarioAsync(scenario, shell);
+        var firstNavigation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        shell.Navigated += (_, _) => firstNavigation.TrySetResult();
+        _ = DriveScenarioAsync(scenario, shell, firstNavigation);
         return new Window(shell);
     }
 
-    static async Task DriveScenarioAsync(Scenario scenario, Shell shell)
+    static async Task DriveScenarioAsync(Scenario scenario, Shell shell, TaskCompletionSource firstNavigation)
     {
         if (scenario.ChangesForegroundColor)
         {
@@ -43,7 +44,7 @@ public sealed class App : Application
         }
         else if (scenario.Placement == IconPlacement.BackButtonIconOverride)
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            await Task.WhenAny(firstNavigation.Task, Task.Delay(TimeSpan.FromSeconds(10)));
             await MainThread.InvokeOnMainThreadAsync(() => shell.GoToAsync("detail"));
         }
 

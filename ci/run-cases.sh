@@ -7,8 +7,9 @@ artifacts="artifacts/cases"
 mkdir -p "$artifacts"
 
 adb logcat -G 16M
+adb shell settings put global hide_error_dialogs 1
 
-apk=$(ls src/Repro/bin/Release/*/android-x64/*-Signed.apk | head -1)
+apk=$(ls src/Repro/bin/Release/net11.0-android/*-Signed.apk | head -1)
 adb install -r "$apk" > artifacts/install.txt 2>&1 || { sleep 10; adb install -r "$apk" > artifacts/install.txt 2>&1; } \
     || { echo "Install failed"; cat artifacts/install.txt; exit 1; }
 

@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Repro;
 
 enum IconSourceKind { Valid, Throws, SlowThenValid }
@@ -12,7 +14,6 @@ sealed record Scenario(string Name, IconSourceKind Kind, IconPlacement Placement
 
     public static string CaseName { get; set; } = "control";
 
-    // 1x1 transparent PNG
     public static readonly byte[] TransparentPng = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
 
@@ -36,14 +37,14 @@ sealed record Scenario(string Name, IconSourceKind Kind, IconPlacement Placement
         return new Scenario(caseName, kind, placement, usesWorkaround, baseName == "flyouticon-canceled-by-maui");
     }
 
-    public ImageSource CreateIconSource()
+    public ImageSource CreateIconSource(string sourceName)
     {
         var requestCount = 0;
 
         async Task<Stream> Load(CancellationToken cancellationToken)
         {
             var requestNumber = Interlocked.Increment(ref requestCount);
-            Log.Line("STREAM_REQUESTED", Name, ("n", requestNumber.ToString()));
+            Log.Line("STREAM_REQUESTED", Name, ("n", requestNumber.ToString(CultureInfo.InvariantCulture)), ("source", sourceName));
             firstStreamRequested.TrySetResult();
 
             switch (Kind)
@@ -51,11 +52,11 @@ sealed record Scenario(string Name, IconSourceKind Kind, IconPlacement Placement
                 case IconSourceKind.Throws:
                     throw new IOException("simulated offline");
                 case IconSourceKind.SlowThenValid:
-                    await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                    await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
                     break;
             }
 
-            Log.Line("STREAM_SERVED", Name, ("n", requestNumber.ToString()));
+            Log.Line("STREAM_SERVED", Name, ("n", requestNumber.ToString(CultureInfo.InvariantCulture)), ("source", sourceName));
             return new MemoryStream(TransparentPng);
         }
 

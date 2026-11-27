@@ -19,13 +19,13 @@ expected = json.load(open(arguments.expected))
 
 LOGCAT_LINE = re.compile(r"^\S+\s+\S+\s+(\d+)\s+\d+\s+([A-Z])\s+(\S+)\s*: ?(.*)$")
 
-# What the thrown exception must look like for each crashing case
 EXCEPTION_SIGNATURE = {
     "flyouticon-throws": r"simulated offline",
     "iconoverride-throws": r"simulated offline",
     "flyouticon-canceled-by-maui": r"TaskCanceledException|OperationCanceledException",
 }
-MINIMUM_REQUESTS = {"flyouticon-canceled-by-maui": 2, "flyouticon-canceled-by-maui-safe": 2, "control-image-throws": 2}
+MINIMUM_REQUESTS = {"flyouticon-canceled-by-maui": 2, "flyouticon-canceled-by-maui-safe": 2}
+REQUIRED_SOURCES = {"control-image-throws": ("image", "toolbaritem")}
 CANCELED_CASES = {"flyouticon-canceled-by-maui", "flyouticon-canceled-by-maui-safe"}
 FALLBACK_REQUIRED_CASES = {"flyouticon-throws-safe", "iconoverride-throws-safe"}
 
@@ -54,11 +54,12 @@ def observe(case, folder):
     marker_lines = [message for _, tag, message in own_lines if tag == "ShellIconRepro"]
 
     requests = sum(1 for m in marker_lines if m.startswith(f"STREAM_REQUESTED case={case} "))
-    alive = any(m.startswith(f"ALIVE case={case}") for m in marker_lines)
-    done = any(m.startswith(f"DONE case={case}") for m in marker_lines)
-    unhandled = any(m.startswith(f"UNHANDLED case={case}") for m in marker_lines)
+    has_marker = lambda name: any(re.match(rf"{name} case={re.escape(case)}( |$)", m) for m in marker_lines)
+    alive = has_marker("ALIVE")
+    done = has_marker("DONE")
+    unhandled = has_marker("UNHANDLED")
     fatal = "FATAL EXCEPTION" in own_text
-    fallbacks = sum(1 for m in marker_lines if m.startswith(f"FALLBACK case={case}"))
+    fallbacks = sum(1 for m in marker_lines if re.match(rf"FALLBACK case={re.escape(case)}( |$)", m))
     process = read(f"{folder}/process.txt").strip() or "unknown"
     details = {"process": process, "pid": pid, "streamRequests": requests, "alive": alive, "done": done, "unhandledLogged": unhandled, "fatalException": fatal, "fallbacks": fallbacks}
 
@@ -68,11 +69,20 @@ def observe(case, folder):
         problems.append(f"only {requests} STREAM_REQUESTED lines, expected at least {wanted_requests}: the icon load did not happen as planned")
         return "icon-not-loaded", problems, details
 
+    for required_source in REQUIRED_SOURCES.get(case, ()):
+        if not any(m.startswith(f"STREAM_REQUESTED case={case} ") and re.search(rf" source={required_source}( |$)", m) for m in marker_lines):
+            problems.append(f"no STREAM_REQUESTED from source={required_source}: that placement never loaded its icon")
+            return "icon-not-loaded", problems, details
+
+    if case == "flyouticon-slow" and not any(m.startswith(f"STREAM_SERVED case={case} n=1 ") for m in marker_lines):
+        problems.append("no STREAM_SERVED n=1: the slow load did not finish undisturbed")
+        return "icon-not-loaded", problems, details
+
     if case in CANCELED_CASES:
-        second_update = next((i for i, m in enumerate(marker_lines) if m.startswith(f"SECOND_UPDATE case={case}")), None)
+        second_update = next((i for i, m in enumerate(marker_lines) if re.match(rf"SECOND_UPDATE case={re.escape(case)}( |$)", m)), None)
         second_request_after = second_update is not None and any(
-            m.startswith(f"STREAM_REQUESTED case={case} n=2") for m in marker_lines[second_update:])
-        served = lambda n: any(m.startswith(f"STREAM_SERVED case={case} n={n}") for m in marker_lines)
+            m.startswith(f"STREAM_REQUESTED case={case} n=2 ") for m in marker_lines[second_update:])
+        served = lambda n: any(m.startswith(f"STREAM_SERVED case={case} n={n} ") for m in marker_lines)
         if case.endswith("-safe"):
             # SafeStreamImageSource receives no token from MAUI, so both loads finish and nothing falls back
             if not second_request_after or not served(1) or not served(2) or fallbacks:
@@ -110,9 +120,13 @@ os.makedirs(arguments.results, exist_ok=True)
 json.dump({"apiLevel": arguments.api_level, "cases": rows}, open(f"{arguments.results}/results.json", "w"), indent=2)
 
 wrong = [row["case"] for row in rows if not row["match"]]
-verdict = ("Bug reproduced: the three failing icon loads killed the app inside UpdateLeftBarButtonItem; controls and workaround stayed alive"
+crash_cases = [case for case, want in expected.items() if want.startswith("crash")]
+verdict = (f"Bug reproduced: {len(crash_cases)} failing icon loads ({', '.join(crash_cases)}) killed the app inside UpdateLeftBarButtonItem; controls and workaround stayed alive"
            if not wrong else f"NOT as expected: {', '.join(wrong)}")
+versions = read(f"{arguments.results}/versions.txt").strip().replace("\n", "; ")
+started = re.search(r"START case=\S+ maui=(\S+)", "".join(read(f"{arguments.results}/cases/{case}/logcat.txt") for case in expected))
 lines = [f"### Android API {arguments.api_level}", "", f"**{verdict}**", "",
+         f"Versions: {versions or '?'}; app logged maui={started.group(1) if started else '?'}", "",
          "| Case | Expected | Observed | Match | Process | Stream requests | Notes |", "|---|---|---|---|---|---|---|"]
 for row in rows:
     lines.append(f"| {row['case']} | {row['expected']} | {row['observed']} | {'yes' if row['match'] else 'NO'} | {row.get('process', '-')} | {row.get('streamRequests', '-')} | {'; '.join(row['problems']).replace('|', '/')} |")
