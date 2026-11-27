@@ -23,14 +23,14 @@ Cases: `control`, `control-iconoverride`, `control-image-throws`, `flyouticon-sl
 ## Observed vs expected
 
 - Observed: the process dies with a fatal exception thrown from `ShellToolbarTracker.UpdateLeftBarButtonItem` (`IOException: simulated offline`, or `TaskCanceledException`).
-- Not a misuse of the API: `control-image-throws` shows `Image` and `ToolbarItem` survive the same throwing stream func (each has its own source) (`ImageSourcePartLoader` and `LoadImage` use `FireAndForget`).
+- Not a misuse of the API: `control-image-throws` shows `Image` and `ToolbarItem` survive the same throwing stream func (each has its own source), because `ImageHandler.MapSource` uses `FireAndForget` and `ImageSourcePartExtensions.UpdateSourceAsync` catches the exception for the `Image`, and `ImageSourceExtensions.LoadImage` uses `FireAndForget` for the `ToolbarItem`.
 - Expected: the icon is skipped (as the bottom-tab twin does since dotnet/maui#36328) and the app keeps running.
 
 ## Versions
 
 - `Microsoft.Maui.Controls` 11.0.10 (`MauiVersion` pin), `net11.0-android`, .NET SDK 11.0.100, CoreCLR, Release.
 - Emulators: Android API 35 and 36, x86_64. The run logs the exact restored `Microsoft.Maui.Controls` version (`artifacts/versions.txt`) and the assembly informational version (`START maui=`).
-- Source: `ShellToolbarTracker.cs` lines [426](https://github.com/dotnet/maui/blob/11.0.10/src/Controls/src/Core/Platform/Android/ShellToolbarTracker.cs#L426) and [477](https://github.com/dotnet/maui/blob/11.0.10/src/Controls/src/Core/Platform/Android/ShellToolbarTracker.cs#L477) are identical in 11.0.10 and `main` (checked 2026-11-23). 10.0.130 has the same code.
+- Source: `ShellToolbarTracker.cs` lines [426](https://github.com/dotnet/maui/blob/11.0.10/src/Controls/src/Core/Compatibility/Handlers/Shell/Android/ShellToolbarTracker.cs#L426) and [477](https://github.com/dotnet/maui/blob/11.0.10/src/Controls/src/Core/Compatibility/Handlers/Shell/Android/ShellToolbarTracker.cs#L477) are identical in 11.0.10 and `main` (checked 2026-11-23). 10.0.130 has the same code.
 
 ## Legs (all run in `.github/workflows/repro.yml`)
 

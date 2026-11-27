@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace Repro;
 
 public sealed class App : Application
@@ -5,7 +7,7 @@ public sealed class App : Application
     protected override Window CreateWindow(IActivationState? activationState)
     {
         var scenario = Scenario.Parse(Scenario.CaseName);
-        Log.Line("START", scenario.Name, ("maui", typeof(Shell).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "?"), ("runtime", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription));
+        Log.Line("START", scenario.Name, ("maui", typeof(Shell).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "?"), ("runtime", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription));
         ObserveUnhandledExceptions(scenario);
 
         Routing.RegisterRoute("detail", typeof(DetailPage));
