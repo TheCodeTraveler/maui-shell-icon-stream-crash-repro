@@ -28,6 +28,17 @@ wait_for_end() {
     return 1
 }
 
+# The first launch after emulator boot can restart the activity, which makes Glide re-read a closed stream (dotnet/maui#37834).
+# One unasserted launch absorbs that.
+warmup="artifacts/warmup"
+mkdir -p "$warmup"
+adb logcat -c
+adb shell am start -W -n "$package/com.example.shellicon.MainActivity" --es case control > "$warmup/am-start.txt" 2>&1
+wait_for_end > "$warmup/wait.txt" 2>&1
+adb logcat -d > "$warmup/logcat.txt"
+adb shell am force-stop "$package"
+sleep 3
+
 for case_name in control control-iconoverride control-image-throws flyouticon-slow \
     flyouticon-throws iconoverride-throws flyouticon-canceled-by-maui \
     flyouticon-throws-safe iconoverride-throws-safe flyouticon-canceled-by-maui-safe; do

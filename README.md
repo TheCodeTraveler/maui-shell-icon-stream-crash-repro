@@ -51,6 +51,8 @@ Workaround leg: a subclass of `ShellToolbarTracker` cannot catch the exception, 
 
 CI: (run link added after the first run)
 
+Known unrelated flake: on the first launch after emulator boot, Glide can re-read a closed stream (dotnet/maui#37834, fixed by dotnet/maui#38111 for the next service release). The app does not crash, a warm-up launch absorbs it, and the assert reports it as `glide-restart-37834`.
+
 Upstream issue: (to be filed)
 
 ## Root cause and recommended fix

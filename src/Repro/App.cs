@@ -15,6 +15,38 @@ public sealed class App : Application
         var homePage = new ContentPage { Title = "Home", Content = new Label { Text = scenario.Name } };
         shell.Items.Add(new ShellContent { Title = "Home", Route = "home", Content = homePage });
 
+        var firstNavigation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        shell.Navigated += (_, _) => firstNavigation.TrySetResult();
+        _ = DriveScenarioAsync(scenario, shell, homePage, firstNavigation);
+        return new Window(shell);
+    }
+
+    static async Task DriveScenarioAsync(Scenario scenario, Shell shell, ContentPage homePage, TaskCompletionSource firstNavigation)
+    {
+        // Icons are assigned once the activity is up, so a Glide restart on a cold first launch cannot hit them
+        await Task.WhenAny(firstNavigation.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        await MainThread.InvokeOnMainThreadAsync(() => ApplyPlacement(scenario, shell, homePage));
+
+        if (scenario.ChangesForegroundColor)
+        {
+            // Waits for the first icon load instead of a fixed delay, so the second update always lands while it is pending
+            await Task.WhenAny(scenario.FirstStreamRequested, Task.Delay(TimeSpan.FromSeconds(20)));
+            Log.Line("SECOND_UPDATE", scenario.Name);
+            await MainThread.InvokeOnMainThreadAsync(() => Shell.SetForegroundColor(shell, Colors.Red));
+        }
+        else if (scenario.Placement == IconPlacement.BackButtonIconOverride)
+        {
+            await MainThread.InvokeOnMainThreadAsync(() => shell.GoToAsync("detail"));
+        }
+
+        await Task.Delay(TimeSpan.FromSeconds(10));
+        Log.Line("ALIVE", scenario.Name);
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        Log.Line("DONE", scenario.Name);
+    }
+
+    static void ApplyPlacement(Scenario scenario, Shell shell, ContentPage homePage)
+    {
         switch (scenario.Placement)
         {
             case IconPlacement.FlyoutIcon:
@@ -28,32 +60,6 @@ public sealed class App : Application
                 homePage.ToolbarItems.Add(new ToolbarItem { IconImageSource = scenario.CreateIconSource("toolbaritem") });
                 break;
         }
-
-        var firstNavigation = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        shell.Navigated += (_, _) => firstNavigation.TrySetResult();
-        _ = DriveScenarioAsync(scenario, shell, firstNavigation);
-        return new Window(shell);
-    }
-
-    static async Task DriveScenarioAsync(Scenario scenario, Shell shell, TaskCompletionSource firstNavigation)
-    {
-        if (scenario.ChangesForegroundColor)
-        {
-            // Waits for the first icon load instead of a fixed delay, so the second update always lands while it is pending
-            await Task.WhenAny(scenario.FirstStreamRequested, Task.Delay(TimeSpan.FromSeconds(20)));
-            Log.Line("SECOND_UPDATE", scenario.Name);
-            await MainThread.InvokeOnMainThreadAsync(() => Shell.SetForegroundColor(shell, Colors.Red));
-        }
-        else if (scenario.Placement == IconPlacement.BackButtonIconOverride)
-        {
-            await Task.WhenAny(firstNavigation.Task, Task.Delay(TimeSpan.FromSeconds(10)));
-            await MainThread.InvokeOnMainThreadAsync(() => shell.GoToAsync("detail"));
-        }
-
-        await Task.Delay(TimeSpan.FromSeconds(10));
-        Log.Line("ALIVE", scenario.Name);
-        await Task.Delay(TimeSpan.FromSeconds(1));
-        Log.Line("DONE", scenario.Name);
     }
 
     static void ObserveUnhandledExceptions(Scenario scenario)

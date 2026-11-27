@@ -104,7 +104,16 @@ def observe(case, folder):
     if process == "gone" and not alive and not done and signature and re.search(signature, own_text) and "UpdateLeftBarButtonItem" in own_text:
         return "crash-in-UpdateLeftBarButtonItem", problems, details
 
-    problems.append(f"process={process}; crash verdicts need a dead process plus the expected exception text and an UpdateLeftBarButtonItem frame")
+    first_exception = next((m for m in own_text.splitlines() if re.search(r"Exception", m)), "no exception line")
+    if all(part in own_text for part in ("ObjectDisposed", "InputStreamAdapter", "GlideInputStreamModelLoader")) and process == "alive":
+        problems.append(f"Glide re-read a closed stream after an activity restart (dotnet/maui#37834, fixed by #38111 for the next service release); the app stayed alive and this is not the bug under test. First exception: {first_exception[:200]}")
+        return "glide-restart-37834", problems, details
+
+    if process == "alive":
+        problems.append(f"UNHANDLED was logged or ALIVE/DONE is missing, yet the process stayed alive (alive={alive}, done={done}, unhandled={unhandled}, fatal={fatal}). First exception: {first_exception[:200]}")
+        return "other-failure", problems, details
+
+    problems.append(f"process={process}; crash verdicts need a dead process plus the expected exception text and an UpdateLeftBarButtonItem frame. First exception: {first_exception[:200]}")
     return "other-failure", problems, details
 
 
